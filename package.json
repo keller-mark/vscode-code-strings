@@ -1,6 +1,6 @@
 {
-  "name": "vscode-str-syntax",
-  "displayName": "vscode-str-syntax",
+  "name": "vscode-code-strings",
+  "displayName": "vscode-code-strings",
   "description": "Dynamic syntax highlighting for strings based on comment directives",
   "version": "0.0.1",
   "engines": {

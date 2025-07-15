@@ -104,13 +104,19 @@ class DynamicSyntaxHighlighter {
     // Determine comment syntax based on parent language
     let commentRegex: RegExp;
     if (document.languageId === 'python') {
-      commentRegex = /^\s*#\s*vscode-string-syntax:\s*(\w+)/;
+      commentRegex = /^\s*#\s*lang:\s*(\w+)/;
     } else {
       // Default to JS/TS style
-      commentRegex = /^\s*\/\/\s*vscode-string-syntax:\s*(\w+)/;
+      commentRegex = /^\s*\/\/\s*lang:\s*(\w+)/;
     }
 
+    let prevEndLine: number | undefined = undefined;
+
     for (let i = 0; i < lines.length; i++) {
+      if(prevEndLine !== undefined && i <= prevEndLine) {
+        // Skip ahead in the for loop past endLine.
+        continue;
+      }
       const line = lines[i];
       const commentMatch = line.match(commentRegex);
       
@@ -133,6 +139,7 @@ class DynamicSyntaxHighlighter {
             contentLines,
             targetLanguage
           );
+          prevEndLine = endLine;
           console.log(`Decorations: `, syntaxDecorations);
           
           // Group decorations by type
@@ -272,22 +279,30 @@ class DynamicSyntaxHighlighter {
     // Only support dynamic fetching for JavaScript and GLSL
     const urls: { [key: string]: string } = {
       javascript: 'https://raw.githubusercontent.com/microsoft/TypeScript-TmLanguage/refs/heads/master/TypeScriptReact.tmLanguage',
+      js: 'https://raw.githubusercontent.com/microsoft/TypeScript-TmLanguage/refs/heads/master/TypeScriptReact.tmLanguage',
+      py: 'https://raw.githubusercontent.com/MagicStack/MagicPython/refs/heads/master/grammars/MagicPython.tmLanguage',
       python: 'https://raw.githubusercontent.com/MagicStack/MagicPython/refs/heads/master/grammars/MagicPython.tmLanguage',
       glsl: 'https://raw.githubusercontent.com/stef-levesque/vscode-shader/refs/heads/master/syntaxes/glsl.tmLanguage',
+      css: 'https://raw.githubusercontent.com/microsoft/vscode/refs/heads/main/extensions/css/syntaxes/css.tmLanguage.json',
     };
     const url = urls[language];
     if (!url) return null;
     if (this.grammarCache[language]) return this.grammarCache[language];
     try {
-      // Fetch the .tmLanguage file as text
+      // Fetch the .tmLanguage file as text or the .json file as json
       const response = await fetch(url);
       if (!response.ok) {
         console.error(`Failed to fetch grammar for ${language}: ${response.statusText}`);
         return null;
       }
-      const tmLanguageText = await response.text();
-      // Parse the XML .tmLanguage file to JS object using plist
-      const rawGrammar = parsePlist(tmLanguageText);
+      let rawGrammar: any;
+      if(url.endsWith('.json')) {
+        rawGrammar = await response.json();
+      } else {
+        const tmLanguageText = await response.text();
+        // Parse the XML .tmLanguage file to JS object using plist
+        rawGrammar = parsePlist(tmLanguageText);
+      }      
       // Type guard: ensure rawGrammar is an object with scopeName
       if (!rawGrammar || typeof rawGrammar !== 'object' || !('scopeName' in rawGrammar)) {
         console.error(`Invalid grammar format for ${language}`);
@@ -315,7 +330,7 @@ class DynamicSyntaxHighlighter {
       // --- Deterministic tokenType-to-color mapping ---
       const tokenTypes = this.extractTokenTypesFromGrammar(rawGrammar);
       tokenTypes.sort();
-      this.tokenTypeColors.clear();
+      //this.tokenTypeColors.clear();
       for (let i = 0; i < tokenTypes.length; i++) {
         const color = this.colorPalette[i % this.colorPalette.length];
         this.tokenTypeColors.set(tokenTypes[i], color);
@@ -422,7 +437,7 @@ let highlighter: DynamicSyntaxHighlighter;
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  console.log('vscode-str-syntax extension is now active!');
+  console.log('vscode-code-strings extension is now active!');
   
   highlighter = new DynamicSyntaxHighlighter(context);
   highlighter.activate();

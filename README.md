@@ -1,4 +1,4 @@
-# vscode-str-syntax README
+# vscode-code-strings README
 
 A VSCode extension which enables syntax highlighting for language A within strings written in language B.
 
@@ -6,7 +6,7 @@ When this extension is enabled, comments in language B immediately before the st
 For example, to enable highlighting of a string containing JS code within a Python script, the developer would write:
 
 ```python
-# vscode-string-syntax: js
+# lang: js
 my_js_str = """
 function add(a, b) {
     return a + b;
