@@ -39,7 +39,7 @@ To test or develop the extension locally:
 
 2. **Install dependencies**:
    ```sh
-   pnpm install
+   npm install
    ```
 
 3. **Open the project in VSCode**:
@@ -56,8 +56,14 @@ To test or develop the extension locally:
 
 7. **Package the extension** (optional, for distribution):
    ```sh
-   pnpm run package
+   npm run vsce-package
    ```
+
+8. Install
+
+    ```sh
+    code --install-extension ./vscode-code-strings-0.0.1.vsix
+    ```
 
 For more information, see the [VSCode Extension API documentation](https://code.visualstudio.com/api).
 
