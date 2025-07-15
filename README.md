@@ -16,11 +16,53 @@ function add(a, b) {
 
 The extension will highlight the contents of the string using the specified language's syntax.
 
+-----
 
+### Usage
 
+1. **Install the extension** from the VSCode Marketplace or by loading it as an unpacked extension during development.
+2. **Open a file** in your parent language (e.g., Python).
+3. **Add a `lang: <lang>`comment** immediately before a string to specify the child language for syntax highlighting.  
+4. The string contents will be highlighted according to the specified language.
+
+-----
+
+### Development
+
+To test or develop the extension locally:
+
+1. **Clone this repository**:
+   ```sh
+   git clone <repo-url>
+   cd vscode-code-strings
+   ```
+
+2. **Install dependencies**:
+   ```sh
+   pnpm install
+   ```
+
+3. **Open the project in VSCode**:
+   ```sh
+   code .
+   ```
+
+4. **Start the extension host**:
+   - Press `F5` to launch a new Extension Development Host window with the extension loaded.
+
+5. **Test the extension** by opening a supported file and using the `# lang: <child-language>` comment before a string.
+
+6. **Make changes** to the code as needed. The extension host will reload on save.
+
+7. **Package the extension** (optional, for distribution):
+   ```sh
+   pnpm run package
+   ```
+
+For more information, see the [VSCode Extension API documentation](https://code.visualstudio.com/api).
 
 <!-- Below content left over from template -->
-
+<!--
 ## Extension Settings
 
 Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
@@ -74,3 +116,4 @@ You can author your README using Visual Studio Code. Here are some useful editor
 * [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
 **Enjoy!**
+-->
