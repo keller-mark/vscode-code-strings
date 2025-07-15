@@ -13,10 +13,9 @@ interface GrammarCache {
 }
 
 interface Token {
-  start: number;
-  end: number;
   type: string;
   value: string;
+  range: vscode.Range; // Added range for decoration
 }
 
 interface SyntaxDecoration {
@@ -75,17 +74,27 @@ class DynamicSyntaxHighlighter {
     const lines = text.split('\n');
     const decorationsByType: Map<string, vscode.DecorationOptions[]> = new Map();
 
+    // Determine comment syntax based on parent language
+    let commentRegex: RegExp;
+    if (document.languageId === 'python') {
+      commentRegex = /^\s*#\s*vscode-string-syntax:\s*(\w+)/;
+    } else {
+      // Default to JS/TS style
+      commentRegex = /^\s*\/\/\s*vscode-string-syntax:\s*(\w+)/;
+    }
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const commentMatch = line.match(/^\s*(?:\/\/|\#)\s*vscode-string-syntax:\s*(\w+)/);
+      const commentMatch = line.match(commentRegex);
       
       if (commentMatch) {
         const targetLanguage = commentMatch[1].toLowerCase();
+        console.log(`Found comment directive for language: ${targetLanguage} at line ${i + 1}`);
         
-        // Find the next string literal
-        const stringMatch = this.findStringLiteral(lines, i + 1);
+        // Find the next string literal, using parent language
+        const stringMatch = this.findStringLiteral(lines, i + 1, document.languageId);
         if (stringMatch) {
-          const { startLine, endLine, content } = stringMatch;
+          const { startLine, endLine, contentLines } = stringMatch;
           console.log(`Found string literal from line ${startLine} to ${endLine} for language: ${targetLanguage}`);
           
           // Apply syntax highlighting based on the target language
@@ -93,7 +102,7 @@ class DynamicSyntaxHighlighter {
             document,
             startLine,
             endLine,
-            content,
+            contentLines,
             targetLanguage
           );
           
@@ -105,6 +114,8 @@ class DynamicSyntaxHighlighter {
             }
             decorationsByType.get(type)!.push({ range: decoration.range });
           });
+
+          console.log(`DecorationsByType`, decorationsByType);
         }
       }
     }
@@ -124,63 +135,74 @@ class DynamicSyntaxHighlighter {
     }
   }
 
-  private findStringLiteral(lines: string[], startIndex: number): { startLine: number; endLine: number; content: string } | null {
-    for (let i = startIndex; i < lines.length; i++) {
+  private findStringLiteral(
+    lines: string[],
+    fromLine: number,
+    parentLanguageId: string
+  ): { startLine: number; endLine: number; contentLines: string[] } | null {
+    let startLine: number | undefined = undefined;
+    let endLine: number | undefined = undefined;
+    let contentLines: string[] = [];
+    let firstQuoteType: string | undefined = undefined;
+    
+    for (let i = fromLine; i < lines.length; i++) {
       const line = lines[i];
-      
-      // Look for triple quotes (Python) or template literals (JavaScript)
-      const tripleQuoteMatch = line.match(/^\s*[""']{3}(.*)$/);
-      if (tripleQuoteMatch) {
-        const startContent = tripleQuoteMatch[1];
-        let content = startContent;
-        let endLine = i;
-        
-        // Find the closing triple quotes
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j];
-          if (nextLine.includes('"""') || nextLine.includes("'''")) {
-            const endMatch = nextLine.match(/^(.*)[""']{3}/);
-            if (endMatch) {
-              content += '\n' + endMatch[1];
-              endLine = j;
-              break;
+      if (parentLanguageId === 'python') {
+        const tripleQuoteMatch = line.match(/^(.*)(["']{3})(.*)$/);
+        // Entry 0: full match
+        // Entry 1: before triple quotes
+        // Entry 2: triple quotes
+        // Entry 3: after triple quotes
+        if (tripleQuoteMatch) {
+          const quoteType = tripleQuoteMatch[2];
+          console.log(`Found triple-quoted string at line ${i + 1} with quote type: ${quoteType}`);
+          if(typeof startLine === 'number') {
+            if (firstQuoteType === quoteType) {
+              // Final line
+              contentLines.push(tripleQuoteMatch[1]);
+              endLine = i;
+              return { startLine, endLine, contentLines };
+            } else {
+              console.error(`Mismatched quote type at line ${i + 1}: expected ${firstQuoteType}, found ${quoteType}`);
             }
           } else {
-            content += '\n' + nextLine;
-            endLine = j;
+            // First line
+            firstQuoteType = quoteType;
+            startLine = i;
+            contentLines.push(tripleQuoteMatch[3]);
           }
+        } else {
+          // Middle line
+          contentLines.push(line);
         }
-        
-        return { startLine: i, endLine, content };
-      }
-      
-      // Look for template literals (JavaScript)
-      const templateMatch = line.match(/^\s*`(.*)$/);
-      if (templateMatch) {
-        const startContent = templateMatch[1];
-        let content = startContent;
-        let endLine = i;
-        
-        // Find the closing backtick
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j];
-          if (nextLine.includes('`')) {
-            const endMatch = nextLine.match(/^(.*)`/);
-            if (endMatch) {
-              content += '\n' + endMatch[1];
-              endLine = j;
-              break;
-            }
+      } else if (
+        parentLanguageId === 'javascript' ||
+        parentLanguageId === 'typescript' ||
+        parentLanguageId === 'javascriptreact' ||
+        parentLanguageId === 'typescriptreact'
+      ) {
+        const templateMatch = line.match(/^(.*)`(.*)$/);
+        // Entry 0: full match
+        // Entry 1: before template literal
+        // Entry 2: after template literal
+        if (templateMatch) {
+          console.log('Found template literal at line', i + 1);
+          if (typeof startLine === 'number') {
+            // Final line
+            contentLines.push(templateMatch[1]);
+            endLine = i;
+            return { startLine, endLine, contentLines };
           } else {
-            content += '\n' + nextLine;
-            endLine = j;
+            // First line
+            startLine = i;
+            contentLines.push(templateMatch[2]);
           }
+        } else {
+          // Middle line
+          contentLines.push(line);
         }
-        
-        return { startLine: i, endLine, content };
       }
     }
-    
     return null;
   }
 
@@ -188,7 +210,7 @@ class DynamicSyntaxHighlighter {
     document: vscode.TextDocument,
     startLine: number,
     endLine: number,
-    content: string,
+    contentLines: string[],
     language: string
   ): Promise<SyntaxDecoration[]> {
     const decorations: SyntaxDecoration[] = [];
@@ -196,23 +218,18 @@ class DynamicSyntaxHighlighter {
     const grammar = await this.fetchGrammar(language);
     let tokens: Token[] = [];
     if (grammar) {
-      console.log(`Found content`, content);
-      tokens = this.tokenizeWithGrammar(content, grammar);
+      console.log(`Found content`, contentLines.join('\n'));
+      tokens = this.tokenizeWithGrammar(contentLines, grammar, startLine);
     } else {
       console.error(`No grammar found for language: ${language}`);
     }
     for (const token of tokens) {
-      const range = new vscode.Range(
-        new vscode.Position(startLine, token.start),
-        new vscode.Position(startLine, token.end)
-      );
       decorations.push({
-        range,
+        range: token.range,
         type: token.type
       });
     }
     console.log(`Applied ${decorations.length} syntax decorations for language: ${language}`);
-    console.log(`Decorations:`, decorations);
     return decorations;
   }
 
@@ -274,23 +291,23 @@ class DynamicSyntaxHighlighter {
     return oniguruma.loadWASM(wasmBin)
   }
 
-  private tokenizeWithGrammar(content: string, grammar: vscodeTextmate.IGrammar): Token[] {
+  private tokenizeWithGrammar(contentLines: string[], grammar: vscodeTextmate.IGrammar, startLine: number): Token[] {
     // Use the TextMate grammar to tokenize the content
-    const lines = content.split('\n');
     let ruleStack = vscodeTextmate.INITIAL;
     const tokens: Token[] = [];
-    let offset = 0;
-    for (const line of lines) {
+    for (let i = 0; i < contentLines.length; i++) {
+      const line = contentLines[i];
       const lineTokens = grammar.tokenizeLine(line, ruleStack);
       for (const token of lineTokens.tokens) {
         tokens.push({
-          start: offset + token.startIndex,
-          end: offset + token.endIndex,
           type: token.scopes[token.scopes.length - 1] || 'default',
-          value: line.slice(token.startIndex, token.endIndex)
+          value: line.slice(token.startIndex, token.endIndex),
+          range: new vscode.Range(
+            new vscode.Position(startLine + i, token.startIndex),
+            new vscode.Position(startLine + i, token.endIndex)
+          )
         });
       }
-      offset += line.length + 1; // +1 for newline
       ruleStack = lineTokens.ruleStack;
     }
     return tokens;
