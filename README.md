@@ -16,6 +16,10 @@ function add(a, b) {
 
 The extension will highlight the contents of the string using the specified language's syntax.
 
+The main motivations for this extension are:
+- JS-in-Python strings for [anywidget](https://anywidget.dev/)
+- GLSL-in-JS strings for writing WebGL shaders (without using a bundle step)
+
 -----
 
 ### Usage
