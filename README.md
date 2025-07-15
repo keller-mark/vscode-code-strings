@@ -1,6 +1,6 @@
-# vscode-code-strings README
+# vscode-code-strings
 
-A VSCode extension which enables syntax highlighting for language A within strings written in language B.
+A VSCode extension which enables syntax highlighting for language A (child language) within strings written in language B (parent language).
 
 When this extension is enabled, comments in language B immediately before the string definition can enable this behavior.
 For example, to enable highlighting of a string containing JS code within a Python script, the developer would write:

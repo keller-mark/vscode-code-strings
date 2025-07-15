@@ -50,10 +50,35 @@ class DynamicSyntaxHighlighter {
     '#bd93f9', // lavender
     '#f8f8f2', // white
     '#6272a4', // indigo
-    '#44475a', // dark
-    '#dcdcdc'  // fallback
+    //'#44475a', // dark
+    //'#dcdcdc'  // fallback
   ];
   private colorIndex: number = 0;
+
+  // Mapping from common TextMate scopes to VSCode semantic token color keys
+  /*
+  private static readonly SCOPE_TO_SEMANTIC_TOKEN: Record<string, string> = {
+    'keyword': 'editor.semanticTokenColor.keyword.foreground',
+    'string': 'editor.semanticTokenColor.string.foreground',
+    'comment': 'editor.semanticTokenColor.comment.foreground',
+    'variable': 'editor.semanticTokenColor.variable.foreground',
+    'function': 'editor.semanticTokenColor.function.foreground',
+    'type': 'editor.semanticTokenColor.type.foreground',
+    'number': 'editor.semanticTokenColor.number.foreground',
+    'class': 'editor.semanticTokenColor.class.foreground',
+    'interface': 'editor.semanticTokenColor.interface.foreground',
+    'enum': 'editor.semanticTokenColor.enum.foreground',
+    'regexp': 'editor.semanticTokenColor.regexp.foreground',
+    'property': 'editor.semanticTokenColor.property.foreground',
+    'namespace': 'editor.semanticTokenColor.namespace.foreground',
+    'parameter': 'editor.semanticTokenColor.parameter.foreground',
+    'operator': 'editor.semanticTokenColor.operator.foreground',
+    'macro': 'editor.semanticTokenColor.macro.foreground',
+    'label': 'editor.semanticTokenColor.label.foreground',
+    'decorator': 'editor.semanticTokenColor.decorator.foreground',
+    'builtinType': 'editor.semanticTokenColor.type.foreground',
+  };
+  */
 
   private static readonly SUPPORTED_PARENT_LANGUAGES = [
     'python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact'
@@ -140,7 +165,6 @@ class DynamicSyntaxHighlighter {
             targetLanguage
           );
           prevEndLine = endLine;
-          console.log(`Decorations: `, syntaxDecorations);
           
           // Group decorations by type
           syntaxDecorations.forEach(decoration => {
@@ -150,8 +174,6 @@ class DynamicSyntaxHighlighter {
             }
             decorationsByType.get(type)!.push({ range: decoration.range });
           });
-
-          //console.log(`DecorationsByType`, decorationsByType);
         }
       }
     }
@@ -192,7 +214,6 @@ class DynamicSyntaxHighlighter {
         // Entry 2: triple quotes
         // Entry 3: after triple quotes
         if (tripleQuoteMatch) {
-          console.log(tripleQuoteMatch)
           const quoteType = tripleQuoteMatch[2];
           console.log(`Found triple-quoted string at line ${i + 1} with quote type: ${quoteType}`);
           if(typeof startLine === 'number' && typeof startLineOffset === 'number') {
@@ -235,7 +256,7 @@ class DynamicSyntaxHighlighter {
           } else {
             // First line
             startLine = i;
-            startLineOffset = templateMatch[1].length;
+            startLineOffset = templateMatch[1].length + 1; // +1 for the backtick
             contentLines.push(templateMatch[2]);
           }
         } else {
@@ -260,7 +281,6 @@ class DynamicSyntaxHighlighter {
     const grammar = await this.fetchGrammar(language);
     let tokens: Token[] = [];
     if (grammar) {
-      console.log(`Found content`, contentLines.join('\n'));
       tokens = this.tokenizeWithGrammar(contentLines, grammar, startLine, startLineOffset);
     } else {
       console.error(`No grammar found for language: ${language}`);
@@ -396,7 +416,7 @@ class DynamicSyntaxHighlighter {
         const { startIndex, endIndex } = token;
         // Adjust startIndex and endIndex based on the startLineOffset
         const adjustedStartIndex = startIndex + (i === 0 ? startLineOffset : 0);
-        const adjustedEndIndex = endIndex + (i === 0 ? startLineOffset : 0);
+        const adjustedEndIndex = endIndex + (i === 0 ? startLineOffset : 0) + (line.length === 0 && i === contentLines.length - 1 ? -1 : 0); // -1 for the newline character
         tokens.push({
           type,
           value: line.slice(startIndex, endIndex),
@@ -422,8 +442,18 @@ class DynamicSyntaxHighlighter {
     return this.decorationTypes.get(type)!;
   }
 
-  private getColorForType(type: string): string {
-    // Use the dynamically assigned color for this token type
+  private getColorForType(type: string): string | vscode.ThemeColor {
+    // tokenColors defined in the current theme cannot be accessed
+    // Reference: github.com/microsoft/vscode/issues/32813
+    //const baseType = (type || '').split('.')?.[0];
+    //const semanticTokenKey = DynamicSyntaxHighlighter.SCOPE_TO_SEMANTIC_TOKEN?.[baseType];
+    //console.log(`Mapping type "${type}" to semantic token key "${semanticTokenKey}"`);
+    //if (semanticTokenKey) {
+    //  const themeColor = new vscode.ThemeColor(semanticTokenKey);
+    //  console.log(`Using theme color for type "${type}":`, themeColor);
+    //  return themeColor;
+    //}
+    // Fallback to dynamic color assignment
     return this.tokenTypeColors.get(type) || '#dcdcdc';
   }
 
