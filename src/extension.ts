@@ -6,7 +6,6 @@ import * as oniguruma from 'vscode-oniguruma';
 import { parse as parsePlist } from 'plist';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { start } from 'repl';
 
 
 interface GrammarCache {
