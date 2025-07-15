@@ -61,9 +61,11 @@ To test or develop the extension locally:
 
 8. Install
 
-    ```sh
-    code --install-extension ./vscode-code-strings-0.0.1.vsix
-    ```
+   ```sh
+   code --install-extension ./vscode-code-strings-0.0.1.vsix
+   ```
+
+   To debug: Help -> Toggle Developer Tools -> Console (to view console.log statements and errors from the extension).
 
 For more information, see the [VSCode Extension API documentation](https://code.visualstudio.com/api).
 
