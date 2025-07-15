@@ -6,6 +6,7 @@ import * as oniguruma from 'vscode-oniguruma';
 import { parse as parsePlist } from 'plist';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { start } from 'repl';
 
 
 interface GrammarCache {
@@ -27,6 +28,32 @@ class DynamicSyntaxHighlighter {
   private grammarCache: GrammarCache = {};
   private decorationTypes: Map<string, vscode.TextEditorDecorationType> = new Map();
   private disposables: vscode.Disposable[] = [];
+  
+  // Dynamic color mapping for token types
+  private tokenTypeColors: Map<string, string> = new Map();
+  private colorPalette: string[] = [
+    '#569cd6', // blue
+    '#ce9178', // orange
+    '#6a9955', // green
+    '#b5cea8', // light green
+    '#4fc1ff', // cyan
+    '#dcdcaa', // yellow
+    '#c586c0', // purple
+    '#9cdcfe', // light blue
+    '#f44747', // red
+    '#d7ba7d', // tan
+    '#b267e6', // violet
+    '#ffb86c', // peach
+    '#50fa7b', // mint
+    '#ff79c6', // pink
+    '#8be9fd', // sky
+    '#bd93f9', // lavender
+    '#f8f8f2', // white
+    '#6272a4', // indigo
+    '#44475a', // dark
+    '#dcdcdc'  // fallback
+  ];
+  private colorIndex: number = 0;
 
   private static readonly SUPPORTED_PARENT_LANGUAGES = [
     'python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact'
@@ -94,17 +121,19 @@ class DynamicSyntaxHighlighter {
         // Find the next string literal, using parent language
         const stringMatch = this.findStringLiteral(lines, i + 1, document.languageId);
         if (stringMatch) {
-          const { startLine, endLine, contentLines } = stringMatch;
+          const { startLine, startLineOffset, endLine, contentLines } = stringMatch;
           console.log(`Found string literal from line ${startLine} to ${endLine} for language: ${targetLanguage}`);
           
           // Apply syntax highlighting based on the target language
           const syntaxDecorations = await this.applySyntaxHighlighting(
             document,
             startLine,
+            startLineOffset,
             endLine,
             contentLines,
             targetLanguage
           );
+          console.log(`Decorations: `, syntaxDecorations);
           
           // Group decorations by type
           syntaxDecorations.forEach(decoration => {
@@ -115,7 +144,7 @@ class DynamicSyntaxHighlighter {
             decorationsByType.get(type)!.push({ range: decoration.range });
           });
 
-          console.log(`DecorationsByType`, decorationsByType);
+          //console.log(`DecorationsByType`, decorationsByType);
         }
       }
     }
@@ -139,8 +168,10 @@ class DynamicSyntaxHighlighter {
     lines: string[],
     fromLine: number,
     parentLanguageId: string
-  ): { startLine: number; endLine: number; contentLines: string[] } | null {
+  ): { startLine: number; startLineOffset: number; endLine: number; contentLines: string[] } | null {
+
     let startLine: number | undefined = undefined;
+    let startLineOffset: number | undefined = undefined;
     let endLine: number | undefined = undefined;
     let contentLines: string[] = [];
     let firstQuoteType: string | undefined = undefined;
@@ -154,14 +185,15 @@ class DynamicSyntaxHighlighter {
         // Entry 2: triple quotes
         // Entry 3: after triple quotes
         if (tripleQuoteMatch) {
+          console.log(tripleQuoteMatch)
           const quoteType = tripleQuoteMatch[2];
           console.log(`Found triple-quoted string at line ${i + 1} with quote type: ${quoteType}`);
-          if(typeof startLine === 'number') {
+          if(typeof startLine === 'number' && typeof startLineOffset === 'number') {
             if (firstQuoteType === quoteType) {
               // Final line
               contentLines.push(tripleQuoteMatch[1]);
               endLine = i;
-              return { startLine, endLine, contentLines };
+              return { startLine, startLineOffset, endLine, contentLines };
             } else {
               console.error(`Mismatched quote type at line ${i + 1}: expected ${firstQuoteType}, found ${quoteType}`);
             }
@@ -169,6 +201,7 @@ class DynamicSyntaxHighlighter {
             // First line
             firstQuoteType = quoteType;
             startLine = i;
+            startLineOffset = tripleQuoteMatch[1].length + quoteType.length;
             contentLines.push(tripleQuoteMatch[3]);
           }
         } else {
@@ -187,14 +220,15 @@ class DynamicSyntaxHighlighter {
         // Entry 2: after template literal
         if (templateMatch) {
           console.log('Found template literal at line', i + 1);
-          if (typeof startLine === 'number') {
+          if (typeof startLine === 'number' && typeof startLineOffset === 'number') {
             // Final line
             contentLines.push(templateMatch[1]);
             endLine = i;
-            return { startLine, endLine, contentLines };
+            return { startLine, startLineOffset, endLine, contentLines };
           } else {
             // First line
             startLine = i;
+            startLineOffset = templateMatch[1].length;
             contentLines.push(templateMatch[2]);
           }
         } else {
@@ -209,6 +243,7 @@ class DynamicSyntaxHighlighter {
   private async applySyntaxHighlighting(
     document: vscode.TextDocument,
     startLine: number,
+    startLineOffset: number,
     endLine: number,
     contentLines: string[],
     language: string
@@ -219,7 +254,7 @@ class DynamicSyntaxHighlighter {
     let tokens: Token[] = [];
     if (grammar) {
       console.log(`Found content`, contentLines.join('\n'));
-      tokens = this.tokenizeWithGrammar(contentLines, grammar, startLine);
+      tokens = this.tokenizeWithGrammar(contentLines, grammar, startLine, startLineOffset);
     } else {
       console.error(`No grammar found for language: ${language}`);
     }
@@ -276,11 +311,54 @@ class DynamicSyntaxHighlighter {
       const scopeName = (rawGrammar as any).scopeName;
       const grammar = await registry.loadGrammar(scopeName);
       this.grammarCache[language] = grammar;
+
+      // --- Deterministic tokenType-to-color mapping ---
+      const tokenTypes = this.extractTokenTypesFromGrammar(rawGrammar);
+      tokenTypes.sort();
+      this.tokenTypeColors.clear();
+      for (let i = 0; i < tokenTypes.length; i++) {
+        const color = this.colorPalette[i % this.colorPalette.length];
+        this.tokenTypeColors.set(tokenTypes[i], color);
+      }
+      // Always add a fallback
+      this.tokenTypeColors.set('default', '#dcdcdc');
+      // ---
+
       return grammar;
     } catch (e) {
       console.error(`Error fetching grammar for ${language}:`, e);
       return null;
     }
+  }
+
+  // Recursively extract all unique token types (scopes) from the grammar
+  private extractTokenTypesFromGrammar(grammar: any): string[] {
+    const types = new Set<string>();
+    function visitPattern(pattern: any) {
+      if (pattern == null || typeof pattern !== 'object') return;
+      if (typeof pattern.name === 'string') types.add(pattern.name);
+      if (typeof pattern.contentName === 'string') types.add(pattern.contentName);
+      if (Array.isArray(pattern.patterns)) {
+        for (const p of pattern.patterns) visitPattern(p);
+      }
+      if (typeof pattern.repository === 'object') {
+        for (const key in pattern.repository) {
+          visitPattern(pattern.repository[key]);
+        }
+      }
+      // Sometimes captures and beginCaptures/endCaptures have names
+      ['captures', 'beginCaptures', 'endCaptures'].forEach(captureKey => {
+        if (pattern[captureKey] && typeof pattern[captureKey] === 'object') {
+          for (const cap in pattern[captureKey]) {
+            if (pattern[captureKey][cap] && typeof pattern[captureKey][cap].name === 'string') {
+              types.add(pattern[captureKey][cap].name);
+            }
+          }
+        }
+      });
+    }
+    visitPattern(grammar);
+    return Array.from(types).filter(Boolean);
   }
 
   private async loadOnigWasm(): Promise<any> {
@@ -291,7 +369,7 @@ class DynamicSyntaxHighlighter {
     return oniguruma.loadWASM(wasmBin)
   }
 
-  private tokenizeWithGrammar(contentLines: string[], grammar: vscodeTextmate.IGrammar, startLine: number): Token[] {
+  private tokenizeWithGrammar(contentLines: string[], grammar: vscodeTextmate.IGrammar, startLine: number, startLineOffset: number): Token[] {
     // Use the TextMate grammar to tokenize the content
     let ruleStack = vscodeTextmate.INITIAL;
     const tokens: Token[] = [];
@@ -299,12 +377,17 @@ class DynamicSyntaxHighlighter {
       const line = contentLines[i];
       const lineTokens = grammar.tokenizeLine(line, ruleStack);
       for (const token of lineTokens.tokens) {
+        const type = token.scopes[token.scopes.length - 1] || 'default';
+        const { startIndex, endIndex } = token;
+        // Adjust startIndex and endIndex based on the startLineOffset
+        const adjustedStartIndex = startIndex + (i === 0 ? startLineOffset : 0);
+        const adjustedEndIndex = endIndex + (i === 0 ? startLineOffset : 0);
         tokens.push({
-          type: token.scopes[token.scopes.length - 1] || 'default',
-          value: line.slice(token.startIndex, token.endIndex),
+          type,
+          value: line.slice(startIndex, endIndex),
           range: new vscode.Range(
-            new vscode.Position(startLine + i, token.startIndex),
-            new vscode.Position(startLine + i, token.endIndex)
+            new vscode.Position(startLine + i, adjustedStartIndex),
+            new vscode.Position(startLine + i, adjustedEndIndex)
           )
         });
       }
@@ -325,16 +408,8 @@ class DynamicSyntaxHighlighter {
   }
 
   private getColorForType(type: string): string {
-    const colors: { [key: string]: string } = {
-      keyword: '#569cd6',
-      string: '#ce9178',
-      comment: '#6a9955',
-      number: '#b5cea8',
-      constant: '#4fc1ff',
-      identifier: '#dcdcdc',
-      default: '#dcdcdc'
-    };
-    return colors[type] || '#dcdcdc';
+    // Use the dynamically assigned color for this token type
+    return this.tokenTypeColors.get(type) || '#dcdcdc';
   }
 
   dispose() {
